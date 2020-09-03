@@ -37,7 +37,7 @@ class PimapSenseUdp:
     self.ipv6 = bool(ipv6)
     self.system_samples = bool(system_samples)
 
-    # System Monitor Setup
+    # System Samples Setup
     self.sensed_data = 0
     self.system_samples_updated = time.time()
     self.system_samples_period = 1.0
@@ -70,7 +70,7 @@ class PimapSenseUdp:
       self.worker_processes.append(worker_process)
       worker_process.start()
 
-    # Address Lockup Setup
+    # Address Lookup Setup
     # Address lookup is by the tuple (patient_id, device_id) -> IP address.
     # TODO: Under development! May be used in the future for PIMAP commands.
     #self.addresses_by_id = {}

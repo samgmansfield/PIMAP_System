@@ -6,6 +6,7 @@ PYTHONPATH=. python tests/testpimapvisualizepltgraph.py
 License:
 Author: Sam Mansfield
 """
+import ast
 import numpy as np
 import time
 import unittest
@@ -19,6 +20,20 @@ class PimapVisualizePltGraphTestCase(unittest.TestCase):
     self.assertRaises(TypeError, pvpg.PimapVisualizePltGraph, invalid_visualize_keys)
 
   def test_visualize_correct_usage(self):
+    # Test using system samples with an empty list.
+    visualize_keys = []
+    visualize = pvpg. PimapVisualizePltGraph(visualize_keys, system_samples=True)
+    system_samples = visualize.visualize([])
+    while len(system_samples) == 0:
+      system_samples = visualize.visualize([])
+
+    sample = ast.literal_eval(pu.get_data(system_samples[0]))
+    throughput = sample["throughput"]
+    correct_throughput = 0.0
+    self.assertEqual(throughput, correct_throughput)
+    visualize.close()
+
+    # Test simple graph.
     visualize_keys = ["linear"]
     visualize = pvpg.PimapVisualizePltGraph(visualize_keys)
     sample_type = "visualize_test"
