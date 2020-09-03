@@ -119,20 +119,19 @@ class PimapAnalyzeObjectiveMobility:
     if not isinstance(pimap_samples, list):
       raise TypeError("The argument pimap_samples must be a list.")
 
-    if len(pimap_samples) == 0:
-      return []
-
     valid_pimap_samples = list(map(pu.validate_datum, pimap_samples))
-    if not any(valid_pimap_samples):
+    # If pimap_samples is an empty list we still want to continue, this way we can 
+    # still return system_samples.
+    if not any(valid_pimap_samples) and len(pimap_samples) != 0:
       raise ValueError("Invalid data in pimap_samples.")
 
     filtered_pimap_samples = list(filter(lambda x: pu.get_type(x) == "pressure_bandage",
                                          pimap_samples))
-    if len(filtered_pimap_samples) == 0:
-      return []
     self.aggregation_buffer.extend(filtered_pimap_samples)
-    if (len(self.aggregation_buffer) > self.aggregation_limit or
-        time.time() - self.last_time_analyzed > self.aggregation_period):
+    pimap_metrics = []
+    if ((len(self.aggregation_buffer) > self.aggregation_limit or
+         time.time() - self.last_time_analyzed > self.aggregation_period) and
+        len(self.aggregation_buffer) > 0):
       self.last_time_analyzed = time.time()
       start_time_to_analyze = time.time()
 
@@ -241,7 +240,7 @@ class PimapAnalyzeObjectiveMobility:
           # Create a temporary PIMAP sample that will be used to create the
           # movements_per_min PIMAP metric. The relevant features are the patient_id,
           # device_id, and timestamp.
-          temp_pimap_sample = pu.create_pimap_sample("temp", pid, did, "temp", timestamp) 
+          temp_pimap_sample = pu.create_pimap_sample("temp", pid, did, "temp", timestamp)
           new_pimap_metric = pu.create_pimap_metric(self.metric_type, temp_pimap_sample,
                                                     movements_per_min_metric)
           movements_per_min_pimap_metrics.append(new_pimap_metric)
@@ -256,34 +255,30 @@ class PimapAnalyzeObjectiveMobility:
       elif len(self.aggregation_buffer) >= self.aggregation_limit:
         self.aggregation_limit += len(self.aggregation_buffer)
 
-      pimap_metrics = []
       pimap_metrics.extend(angle_pimap_metrics)
       pimap_metrics.extend(gradient_pimap_metrics)
       pimap_metrics.extend(movements_per_min_pimap_metrics)
-
-      pimap_system_samples = []
-      if self.system_samples:
-        self.samples_in += len(self.aggregation_buffer)
-        self.metrics_out += len(pimap_metrics)
-        if time.time() - self.system_samples_updated > self.system_samples_update_period:
-          sample_type = "system_samples"
-          patient_id = "analyze" 
-          device_id = self.metric_type
-          sample = {"throughput_in":(self.samples_in/
-                                      (time.time() - self.system_samples_updated)),
-                    "throughput_out":(self.metrics_out/
-                                       (time.time() - self.system_samples_updated)),
-                    "aggregation_limit":self.aggregation_limit,
-                    "aggregation":len(self.aggregation_buffer),
-                    "time_to_analyze":time_to_analyze}
-
-          pimap_system_samples.append(pu.create_pimap_sample(sample_type, patient_id,
-                                                             device_id, sample))
-          self.system_samples_updated = time.time()
-          self.samples_in = 0
-          self.metrics_out = 0
-
       self.aggregation_buffer = []
-      return pimap_metrics + pimap_system_samples
-    else:
-      return []
+
+    pimap_system_samples = []
+    if self.system_samples:
+      self.samples_in += len(self.aggregation_buffer)
+      self.metrics_out += len(pimap_metrics)
+      if time.time() - self.system_samples_updated > self.system_samples_update_period:
+        sample_type = "system_samples"
+        patient_id = "analyze"
+        device_id = self.metric_type
+        sample = {"throughput_in":(self.samples_in/
+                                    (time.time() - self.system_samples_updated)),
+                  "throughput_out":(self.metrics_out/
+                                     (time.time() - self.system_samples_updated)),
+                  "aggregation_limit":self.aggregation_limit,
+                  "aggregation":len(self.aggregation_buffer)}
+
+        pimap_system_samples.append(pu.create_pimap_sample(sample_type, patient_id,
+                                                           device_id, sample))
+        self.system_samples_updated = time.time()
+        self.samples_in = 0
+        self.metrics_out = 0
+
+    return pimap_metrics + pimap_system_samples

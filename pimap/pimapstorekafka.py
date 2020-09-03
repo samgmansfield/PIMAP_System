@@ -67,7 +67,9 @@ class PimapStoreKafka:
       raise TypeError("The argument pimap_data must be a list.")
 
     valid_pimap_data = list(map(pu.validate_datum, pimap_data))
-    if not any(valid_pimap_data):
+    # If pimap_data is an empty list we still want to continue, this way we can
+    # still return system_samples.
+    if not any(valid_pimap_data) and len(pimap_data) != 0:
       raise ValueError("Invalid data in pimap_data.")
 
     for pimap_datum in pimap_data:

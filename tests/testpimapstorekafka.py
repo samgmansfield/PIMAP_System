@@ -15,7 +15,7 @@ the default Kafka host and port, and delete all topics!!!
 License:
 Author: Sam Mansfield
 """
-
+import ast
 import subprocess
 import time
 import unittest
@@ -60,6 +60,17 @@ class PimapStoreKafkaTestCase(unittest.TestCase):
     host = "nonsense"
     port = ""
     self.assertRaises(KafkaException, pstk.PimapStoreKafka, host, port)
+
+  def test_store_correct_usage(self):
+    # Test using system_samples with an empty list.
+    store = pstk.PimapStoreKafka(system_samples=True)
+    system_samples = store.store([])
+    while len(system_samples) == 0:
+      system_samples = store.store([])
+
+    throughput = ast.literal_eval(pu.get_data(system_samples[0]))["throughput"]
+    correct_throughput = 0.0
+    self.assertEqual(throughput, correct_throughput)
 
   def test_store_incorrect_usage(self):
     # Test using a PIMAP sample instead of a list of PIMAP samples.

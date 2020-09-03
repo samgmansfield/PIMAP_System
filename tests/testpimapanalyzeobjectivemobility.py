@@ -20,10 +20,18 @@ class PimapAnalyzeObjectiveMobilityTestCase(unittest.TestCase):
     self.assertRaises(ValueError, paom.PimapAnalyzeObjectiveMobility, max_pressure)
 
   def test_analyze_correct_usage(self):
-    # Test passing an empty list.
-    analyze = paom.PimapAnalyzeObjectiveMobility()
-    pimap_metrics = analyze.analyze([])
-    self.assertEqual(pimap_metrics, [])
+    # Test using system_system samples with an empty list.
+    analyze = paom.PimapAnalyzeObjectiveMobility(system_samples=True)
+    system_samples = analyze.analyze([])
+    while len(system_samples) == 0:
+      system_samples = analyze.analyze([])
+
+    sample = ast.literal_eval(pu.get_data(system_samples[0]))
+    throughput_in = sample["throughput_in"]
+    throughput_out = sample["throughput_out"]
+    correct_throughput = 0.0
+    self.assertEqual(throughput_in, correct_throughput)
+    self.assertEqual(throughput_out, correct_throughput)
 
     # Test x_angle and y_angle flat plane.
     device_type = "pressure_bandage"

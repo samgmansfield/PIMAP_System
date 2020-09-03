@@ -37,14 +37,19 @@ class PimapVisualizePltGraph:
       raise TypeError("The argument keys must be a list")
 
     self.keys = keys
-    self.system_samples = system_samples
+    self.system_samples = bool(system_samples)
+
+    # System Samples Setup
+    self.system_samples_updated = time.time()
+    self.system_samples_period = 1.0
+    self.latencies = []
+    self.visualized_data = 0
 
     # A value of -1 indicates there is no limit
     self.display_limit = 100
     self.state = "aggregate"
     self.aggregation_buffer = []
     self.aggregation_limit = 100
-    self.latencies = []
 
     self.units = None
     self.title = None
@@ -92,7 +97,7 @@ class PimapVisualizePltGraph:
       raise TypeError("The argument pimap_data must be a list.")
 
     valid_pimap_data = list(map(pu.validate_datum, pimap_data))
-    if not any(valid_pimap_data):
+    if not any(valid_pimap_data) and len(pimap_data) != 0:
       raise ValueError("Invalid data in pimap_data.")
 
     self.aggregation_buffer.extend(pimap_data)
@@ -114,6 +119,7 @@ class PimapVisualizePltGraph:
 
         self.total_data += len(filtered_pimap_data)
         data_processed += len(filtered_pimap_data)
+        self.visualized_data += len(filtered_pimap_data)
 
         types = list(map(pu.get_type, filtered_pimap_data))
         patient_ids = list(map(pu.get_patient_id, filtered_pimap_data))
@@ -190,28 +196,30 @@ class PimapVisualizePltGraph:
           self.display_limit += data_processed
 
       self.state = "aggregate"
-
-      if self.system_samples and self.total_data > 0:
-        sample_type = "system_samples"
-        patient_id = "visualize"
-        device_id = self.keys
-        latency = 0.0
-        if len(self.latencies) > 0: 
-          latency = np.mean(self.latencies)
-        sample = {"throughput":(data_processed/actual_refresh_period),
-                  "latency":latency,
-                  "aggregation_limit":self.aggregation_limit,
-                  "aggregation":len(self.aggregation_buffer),
-                  "display_limit":self.display_limit,
-                  "total_data":self.total_data,
-                  "refresh_period":actual_refresh_period,
-                  "time_to_process":time_to_process,
-                  "time_to_plot":time_to_plot}
-        pimap_system_samples.append(pu.create_pimap_sample(sample_type, patient_id,
-                                                           device_id, sample))
-        self.latencies = []
-
       self.aggregation_buffer = []
+
+    if (self.system_samples and
+        (time.time() - self.system_samples_updated > self.system_samples_period)):
+      sample_type = "system_samples"
+      patient_id = "visualize"
+      device_id = self.keys
+      latency = 0.0
+      if len(self.latencies) > 0:
+        latency = np.mean(self.latencies)
+      visualized_data_per_s = self.visualized_data/(time.time() -
+                                                    self.system_samples_updated)
+      sample = {"throughput":visualized_data_per_s,
+                "latency":latency,
+                "aggregation_limit":self.aggregation_limit,
+                "aggregation":len(self.aggregation_buffer),
+                "display_limit":self.display_limit,
+                "total_data":self.total_data}
+      pimap_system_samples.append(pu.create_pimap_sample(sample_type, patient_id,
+                                                         device_id, sample))
+      self.system_samples_updated = time.time()
+      self.latencies = []
+      self.visualized_data = 0
+
     return pimap_system_samples
 
   def save(self, location):
