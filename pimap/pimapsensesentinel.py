@@ -1,12 +1,11 @@
 import time
 import pickle
 
+from pimap import pimaputilities as pu
 from sentineltoolkit.sentinel_interface import SentinelInterfaceToolkit
 
 class PimapSenseSentinel:
-    """
-    Performs a scan on the Sentinel Bandage
-    """
+    """ Performs a scan on the Sentinel Bandage """
     def __init__(self, device_location, frequency_list, calibration_profile, patient_id = 0, device_id = 0):
         # Creates an instance of the Sentinel Interface Toolkit
         self.sentinel_toolkit = SentinelInterfaceToolkit(device_location)
@@ -26,6 +25,6 @@ class PimapSenseSentinel:
 
         string_scan_results = pickle.dumps(calibrated_scan_results, 0).decode()
 
-        pimap_sample = "sample_type:SentinelBandage;patient_id:%s;device_id:%s;sample:%s;timestamp:%s;;" % (self.patient_id, self.device_id, string_scan_results, str(time.time()))
+        pimap_sample = pu.create_pimap_sample("SentinelBandage", self.patient_id, self.device_id, string_scan_results, time.time())
 
         return [pimap_sample]
