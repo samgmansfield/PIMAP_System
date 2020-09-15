@@ -28,15 +28,15 @@ class PimapSenseSentinel:
     self.patient_id = str(patient_id)
     self.device_id = str(device_id)
 
-    def sense(self):
-      raw_scan_results = self.sentinel_toolkit.send_scan_all(self.frequency_list)
-      calibrated_scan_results = self.calibration_profile.calibrate_raw_sample(
-        raw_scan_results)
+  def sense(self):
+    raw_scan_results = self.sentinel_toolkit.send_scan_all(self.frequency_list)
+    calibrated_scan_results = self.calibration_profile.calibrate_raw_sample(
+      raw_scan_results)
 
-      string_scan_results = pickle.dumps(calibrated_scan_results, 0).decode()
+    string_scan_results = pickle.dumps(calibrated_scan_results, 0).decode()
 
-      pimap_sample = pu.create_pimap_sample("SentinelBandage", self.patient_id,
-                                            self.device_id, string_scan_results,
-                                            time.time())
+    pimap_sample = pu.create_pimap_sample("SentinelBandage", self.patient_id,
+                                          self.device_id, string_scan_results,
+                                          time.time())
 
-      return [pimap_sample]
+    return [pimap_sample]
