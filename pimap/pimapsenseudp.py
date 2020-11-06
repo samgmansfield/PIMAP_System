@@ -14,13 +14,17 @@ import time
 from pimap import pimaputilities as pu
 
 class PimapSenseUdp:
-  def __init__(self, host="localhost", port=31415, ipv6=False, system_samples=False):
+  def __init__(self, host="localhost", port=31415, sample_type="udp", ipv6=False,
+               workers=3, system_samples=False):
     """Constructor for PIMAP Sense UDP
 
     Arguments:
       host (optional): The host of the UDP server. Defaults to "localhost".
       port (optional): The port of the UDP server. Defaults to 31415.
+      sample_type (optional): The sample type given to non-pimap sensed data.
+        Defaults to "udp".
       ipv6 (optional): Whether the address is IPv6. Defaults to False.
+      workers (optional): The number of server processes. Defaults to 3.
       system_samples (optional): A boolean value that indicates whether system_samples
         are produced that report the throughput of this component. Defaults to False.
 
@@ -34,7 +38,9 @@ class PimapSenseUdp:
     """
     self.host = host
     self.port = int(port)
+    self.sample_type = str(sample_type)
     self.ipv6 = bool(ipv6)
+    self.workers = int(workers)
     self.system_samples = bool(system_samples)
 
     # System Samples Setup
@@ -60,20 +66,20 @@ class PimapSenseUdp:
       raise e
     self.max_buffer_size = 4096
 
+    # Address Lookup Setup
+    # Address lookup is by the tuple (patient_id, device_id) -> IP address.
+    # TODO: Under development! May be used in the future for PIMAP commands.
+    self.addresses_by_id = {}
+
     # Multiprocess Setup
     self.running = multiprocessing.Value(ctypes.c_bool, True)
     self.pimap_data_queue = multiprocessing.Queue()
-    self.workers = 3
+    self.workers = self.workers
     self.worker_processes = []
     for i in range(self.workers):
       worker_process = multiprocessing.Process(target=self._sense_worker, daemon=True)
       self.worker_processes.append(worker_process)
       worker_process.start()
-
-    # Address Lookup Setup
-    # Address lookup is by the tuple (patient_id, device_id) -> IP address.
-    # TODO: Under development! May be used in the future for PIMAP commands.
-    #self.addresses_by_id = {}
 
   def _sense_worker(self):
     """Worker process
@@ -85,14 +91,22 @@ class PimapSenseUdp:
         (received_coded, address) = self.socket.recvfrom(self.max_buffer_size)
         received = received_coded.decode()
         # If a valid PIMAP sample/metric is received add it to the queue.
+        # Typically this will be a PIMAP sample.
         if pu.validate_datum(received):
           pimap_datum = received
-          self.pimap_data_queue.put(pimap_datum)
           # Add lookup addresses of incoming PIMAP data.
           patient_id = pu.get_patient_id(pimap_datum)
           device_id = pu.get_device_id(pimap_datum)
           # TODO: Under development! May be used in the future for PIMAP commands.
-          #self.addresses_by_id[(patient_id, device_id)] = address
+          self.addresses_by_id[(patient_id, device_id)] = address
+        else:
+          patient_id = address[0]
+          device_id = address[1]
+          sample = received
+          pimap_datum = pu.create_pimap_sample(self.sample_type, patient_id, device_id,
+                                               sample)
+        self.pimap_data_queue.put(pimap_datum)
+
       except socket.timeout: continue
 
   def sense(self):
