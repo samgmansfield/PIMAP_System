@@ -130,7 +130,7 @@ class PimapStoreKafka:
       self.num_messages = (self.num_messages*2)
     if self.num_messages < 1: self.num_messages = 1
     elif self.num_messages > 1000000: self.num_messages = 1000000
-
+   
     try:
       kafka_messages_wo_errors = list(filter(lambda x: x.error() == None,
                                              kafka_messages))
@@ -141,6 +141,8 @@ class PimapStoreKafka:
           if message.error() == None: kafka_messages_wo_errors.append(message)
         except KafkaException:
           print(message.error().code())
+    except SystemError:
+      kafka_messages_wo_errors = []
 
     pimap_data = list(map(lambda x: x.value().decode(), kafka_messages_wo_errors))
     if patient_id != None:
