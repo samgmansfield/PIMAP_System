@@ -32,7 +32,6 @@ import sys
 import time
 from collections import defaultdict
 from pimap import pimaputilities as pu
-from pimap import pimapanalyzesystem as pas
 
 class PimapAnalyzeObjectiveMobility:
   def __init__(self, max_pressure=100.0, system_samples=False):
@@ -70,7 +69,7 @@ class PimapAnalyzeObjectiveMobility:
 
     # This is used to calculate movements per minute when we have enough
     # xy gradient PIMAP samples based on the movements_per_min_period.
-    self.movements_per_min_period = 600
+    self.movements_per_min_period = 3600
     self.saved_gradient_pmetrics_by_id = defaultdict(list)
 
     # Centroid 0
