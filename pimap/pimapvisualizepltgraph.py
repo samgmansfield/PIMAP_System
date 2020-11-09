@@ -16,7 +16,6 @@ import time
 from collections import defaultdict
 from matplotlib import pyplot as plt
 from pimap import pimaputilities as pu
-from pimap import pimapanalyzesystem as pas
 
 class PimapVisualizePltGraph:
   def __init__(self, keys, system_samples=False):
