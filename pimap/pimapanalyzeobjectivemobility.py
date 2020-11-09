@@ -261,7 +261,7 @@ class PimapAnalyzeObjectiveMobility:
 
     pimap_system_samples = []
     if self.system_samples:
-      self.samples_in += len(self.aggregation_buffer)
+      self.samples_in += len(filtered_pimap_samples)
       self.metrics_out += len(pimap_metrics)
       if time.time() - self.system_samples_updated > self.system_samples_update_period:
         sample_type = "system_samples"
