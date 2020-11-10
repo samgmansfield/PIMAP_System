@@ -34,12 +34,15 @@ from collections import defaultdict
 from pimap import pimaputilities as pu
 
 class PimapAnalyzeObjectiveMobility:
-  def __init__(self, max_pressure=100.0, system_samples=False):
+  def __init__(self, max_pressure=100.0, sample_type="pressure_bandage",
+               system_samples=False):
     """Constructor for PIMAP Analyze Objective Mobility
 
     Arguments:
       max_pressure (optional): A float value used to normalize pressure values. The units
         should match the pressure_bandage values. Defaults to 100.0
+      sample_type (optional): A string value to filter by sample type of incoming data.
+        Defaults to "pressure_bandage".
       system_samples (optional): A boolean value that indicates whether system_samples
         are produced that report the throughput and other relevant values of this
         component. Defaults to False.
@@ -49,12 +52,15 @@ class PimapAnalyzeObjectiveMobility:
         If a non-float max_pressure is given.
     """
     self.max_pressure = float(max_pressure)
+    self.sample_type = str(sample_type)
     self.system_samples = system_samples
     self.system_samples_updated = time.time()
     self.system_samples_update_period = 1.0
     self.samples_in = 0
     self.metrics_out = 0
     self.metric_type = "objective_mobility"
+    if self.sample_type != "pressure_bandage":
+      self.metric_type += "_" + self.sample_type
 
     self.aggregation_buffer = []
     self.aggregation_limit = 100
@@ -124,7 +130,7 @@ class PimapAnalyzeObjectiveMobility:
     if not any(valid_pimap_samples) and len(pimap_samples) != 0:
       raise ValueError("Invalid data in pimap_samples.")
 
-    filtered_pimap_samples = list(filter(lambda x: pu.get_type(x) == "pressure_bandage",
+    filtered_pimap_samples = list(filter(lambda x: pu.get_type(x) == self.sample_type,
                                          pimap_samples))
     self.aggregation_buffer.extend(filtered_pimap_samples)
     pimap_metrics = []
