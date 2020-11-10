@@ -203,17 +203,16 @@ class PimapVisualizePltGraph:
       sample_type = "system_samples"
       patient_id = "visualize"
       device_id = self.keys
-      latency = 0.0
-      if len(self.latencies) > 0:
-        latency = np.mean(self.latencies)
       visualized_data_per_s = self.visualized_data/(time.time() -
                                                     self.system_samples_updated)
       sample = {"throughput":visualized_data_per_s,
-                "latency":latency,
                 "aggregation_limit":self.aggregation_limit,
                 "aggregation":len(self.aggregation_buffer),
                 "display_limit":self.display_limit,
                 "total_data":self.total_data}
+      if len(self.latencies) > 0:
+        latency = np.mean(self.latencies)
+        sample["latency"] = latency
       pimap_system_samples.append(pu.create_pimap_sample(sample_type, patient_id,
                                                          device_id, sample))
       self.system_samples_updated = time.time()
@@ -249,11 +248,11 @@ if __name__ == "__main__":
     print_usage_and_exit()
 
   # Change the font size.
-  #plt.rcParams.update({'font.size': 20})
+  plt.rcParams.update({'font.size': 20})
   figure, axes = plt.subplots()
   axes.grid()
   (title, xlabel, ylabel, plot_dates, plot_data) = pickle.load(open(sys.argv[1], "rb"))
-  for line_id in plot_dates:
+  for line_id in sorted(plot_dates):
     plt.plot(plot_dates[line_id], plot_data[line_id], label=line_id)
   axes.set_title(title)
   axes.set_xlabel(xlabel)
@@ -264,6 +263,8 @@ if __name__ == "__main__":
   #axes.set_ylabel("Throughput Per Second")
   # Change the y-axis limit.
   #axes.set_ylim(0.0, 425.0)
+  # Invert y-axis
+  #axes.invert_yaxis()
   for label in axes.get_xticklabels():
     label.set_ha("right")
     label.set_rotation(30)
