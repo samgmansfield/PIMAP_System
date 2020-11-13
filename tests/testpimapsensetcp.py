@@ -97,7 +97,7 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     # Test creating with a valid host and an invalid port.
     host = "localhost"
     port = 1000000000
-    self.assertRaises(socket.gaierror, pset.PimapSenseTcp, host, port)
+    self.assertRaises(ValueError, pset.PimapSenseTcp, host, port)
 
     # Test creating with a non-integer port.
     host = "localhost"
@@ -136,11 +136,12 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     sense = pset.PimapSenseTcp()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     shost = "127.0.0.1"
-    sport = 3500
-    addr_info =  socket.getaddrinfo(shost, sport, socket.AF_INET, socket.SOCK_STREAM)
+    addr_info =  socket.getaddrinfo(shost, None, socket.AF_INET, socket.SOCK_STREAM)
     addr = addr_info[0][4]
     s.bind(addr)
     s.connect((sense.host, sense.port))
+    sport = s.getsockname()[0]
+    sport = s.getsockname()[1]
     data = 0
     sent_data = []
     stop_time = time.time() + sense.system_samples_period
@@ -181,6 +182,7 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     while time.time() < stop_time:
       pimap_sample = pu.create_pimap_sample(sample_type, patient_id, device_id, sample)
       s.send(pimap_sample.encode())
+      time.sleep(0.001)
       sent_pimap_samples.append(pimap_sample)
       sample += 1
     s.close() 
