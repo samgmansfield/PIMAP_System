@@ -60,7 +60,7 @@ class PimapSenseTcpTestCase(unittest.TestCase):
       self.assertFalse(worker.is_alive())
 
     # Test using an IPv6 non-loopback address.
-    host = socket.gethostname()
+    host = "::"
     port = 1234
     ipv6 = True
     sense = pset.PimapSenseTcp(host, port, ipv6=ipv6)

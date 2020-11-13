@@ -60,7 +60,7 @@ class PimapSenseUdpTestCase(unittest.TestCase):
       self.assertFalse(worker.is_alive())
 
     # Test using an IPv6 non-loopback address.
-    host = socket.gethostname()
+    host = "::"
     port = 1234
     ipv6 = True
     sense = pseu.PimapSenseUdp(host, port, ipv6=ipv6)
@@ -97,7 +97,7 @@ class PimapSenseUdpTestCase(unittest.TestCase):
     # Test creating with a valid host and an invalid port.
     host = "localhost"
     port = 1000000000
-    self.assertRaises(socket.gaierror, pseu.PimapSenseUdp, host, port)
+    self.assertRaises(ValueError, pseu.PimapSenseUdp, host, port)
 
     # Test creating with a non-integer port.
     host = "localhost"
