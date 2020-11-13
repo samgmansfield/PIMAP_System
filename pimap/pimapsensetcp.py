@@ -14,7 +14,7 @@ import time
 from pimap import pimaputilities as pu
 
 class PimapSenseTcp:
-  def __init__(self, host="localhost", port=31415, sample_type="tcp", ipv6=False,
+  def __init__(self, host="localhost", port=31416, sample_type="tcp", ipv6=False,
                workers=3, system_samples=False):
     """Constructor for PIMAP Sense TCP
 
@@ -31,13 +31,13 @@ class PimapSenseTcp:
     Exceptions:
       socket.error:
         If attempting to bind to an invalid address.
-      socket.gaierror:
-        If attempting to get address info from an invalid host or port.
       ValueError:
-        If a non-integer port is given.
+        If a non-integer port is given or a port not in the range of 1024-65535.
     """
     self.host = host
     self.port = int(port)
+    if self.port < 1024 or self.port > 65535:
+      raise(ValueError("Port must be an integer in the range 1024-65535."))
     self.sample_type = str(sample_type)
     self.ipv6 = bool(ipv6)
     self.workers = int(workers)
@@ -65,6 +65,7 @@ class PimapSenseTcp:
       self.socket.close()
       raise e
     self.max_buffer_size = 4096
+    self.host = self.socket.getsockname()[0]
 
     # Address Lookup Setup
     # Address lookup is by the tuple (patient_id, device_id) -> IP address.
@@ -80,6 +81,7 @@ class PimapSenseTcp:
       worker_process = multiprocessing.Process(target=self._sense_worker, daemon=False)
       self.worker_processes.append(worker_process)
       worker_process.start()
+    time.sleep(0.1)
 
   def _sense_worker(self):
     """Worker process
