@@ -91,20 +91,19 @@ class PimapSenseUdp:
         (received_coded, address) = self.socket.recvfrom(self.max_buffer_size)
         received = received_coded.decode()
         # If a valid PIMAP sample/metric is received add it to the queue.
-        # Typically this will be a PIMAP sample.
         if pu.validate_datum(received):
           pimap_datum = received
           # Add lookup addresses of incoming PIMAP data.
           patient_id = pu.get_patient_id(pimap_datum)
           device_id = pu.get_device_id(pimap_datum)
           # TODO: Under development! May be used in the future for PIMAP commands.
-          self.addresses_by_id[(patient_id, device_id)] = address
         else:
           patient_id = address[0]
           device_id = address[1]
           sample = received
           pimap_datum = pu.create_pimap_sample(self.sample_type, patient_id, device_id,
                                                sample)
+        self.addresses_by_id[(patient_id, device_id)] = address
         self.pimap_data_queue.put(pimap_datum)
 
       except socket.timeout: continue
