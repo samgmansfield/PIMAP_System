@@ -31,13 +31,13 @@ class PimapSenseUdp:
     Exceptions:
       socket.error:
         If attempting to bind to an invalid address.
-      socket.gaierror:
-        If attempting to get address info from an invalid host or port.
       ValueError:
-        If a non-integer port is given.
+        If a non-integer port is given or a port not in the range of 1024-65535..
     """
     self.host = host
     self.port = int(port)
+    if self.port < 1024 or self.port > 65535:
+      raise(ValueError("Port must be an integer in the range 1024-65535."))
     self.sample_type = str(sample_type)
     self.ipv6 = bool(ipv6)
     self.workers = int(workers)
