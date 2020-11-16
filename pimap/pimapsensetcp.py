@@ -15,7 +15,7 @@ from pimap import pimaputilities as pu
 
 class PimapSenseTcp:
   def __init__(self, host="localhost", port=31416, sample_type="tcp", ipv6=False,
-               workers=3, system_samples=False):
+               sense_workers=3, pimap_workers=1, system_samples=False):
     """Constructor for PIMAP Sense TCP
 
     Arguments:
@@ -24,7 +24,10 @@ class PimapSenseTcp:
       sample_type (optional): The sample type given to non-pimap sensed data.
         Defaults to "udp".
       ipv6 (optional): Whether the address is IPv6. Defaults to False.
-      workers (optional): The number of server processes. Defaults to 3.
+      sense_workers (optional): The number of simultaneous TCP connections.
+        Defaults to 3.
+      pimap_workers (optional): The number of processes to create pimap data from
+        sensed data. Defaults to 3.
       system_samples (optional): A boolean value that indicates whether system_samples
         are produced that report the throughput of this component. Defaults to False.
 
@@ -40,7 +43,8 @@ class PimapSenseTcp:
       raise(ValueError("Port must be an integer in the range 1024-65535."))
     self.sample_type = str(sample_type)
     self.ipv6 = bool(ipv6)
-    self.workers = int(workers)
+    self.sense_workers = int(sense_workers)
+    self.pimap_workers = int(pimap_workers)
     self.system_samples = bool(system_samples)
 
     # System Samples Setup
@@ -66,6 +70,7 @@ class PimapSenseTcp:
       raise e
     self.max_buffer_size = 4096
     self.host = self.socket.getsockname()[0]
+    self.socket.listen(self.sense_workers)
 
     # Address Lookup Setup
     # Address lookup is by the tuple (patient_id, device_id) -> IP address.
@@ -74,52 +79,81 @@ class PimapSenseTcp:
 
     # Multiprocess Setup
     self.running = multiprocessing.Value(ctypes.c_bool, True)
+    self.running.value = True
     self.pimap_data_queue = multiprocessing.Queue()
-    self.workers = self.workers
-    self.worker_processes = []
-    for i in range(self.workers):
-      worker_process = multiprocessing.Process(target=self._sense_worker, daemon=False)
-      self.worker_processes.append(worker_process)
+    self.received_address_queue = multiprocessing.Queue()
+    self.sense_worker_processes = []
+    for i in range(self.sense_workers):
+      worker_process = multiprocessing.Process(target=self._sense_worker, daemon=True)
+      self.sense_worker_processes.append(worker_process)
+      worker_process.start()
+    self.pimap_worker_processes = []
+    for i in range(self.pimap_workers):
+      worker_process = multiprocessing.Process(
+        target=self._create_pimap_data_and_add_to_queue, daemon=True)
+      self.pimap_worker_processes.append(worker_process)
       worker_process.start()
     time.sleep(0.1)
+
+  def _create_pimap_data_and_add_to_queue(self):
+    while self.running.value:
+      if not self.received_address_queue.empty():
+        (unprocessed, address) = self.received_address_queue.get()
+        processed = ";;".join(unprocessed) 
+        # If valid PIMAP sample/metric is received add it to the queue.
+        if pu.validate_datum(processed):
+          pimap_data = list(map(lambda x: x + ";;", unprocessed))
+          for pimap_datum in pimap_data:
+            # Add lookup addresses of incoming PIMAP data.
+            patient_id = pu.get_patient_id(pimap_datum)
+            device_id = pu.get_device_id(pimap_datum)
+            self.pimap_data_queue.put(pimap_datum)
+        else:
+          for datum in unprocessed:
+            patient_id = address[0]
+            device_id = address[1]
+            sample = datum
+            pimap_datum = pu.create_pimap_sample(self.sample_type, patient_id,
+                                                 device_id, sample)
+            self.pimap_data_queue.put(pimap_datum)
+        # TODO: Under development! May be used in the future for PIMAP commands.
+        self.addresses_by_id[(patient_id, device_id)] = address
 
   def _sense_worker(self):
     """Worker process
 
     Used internally to create TCP server processes.
     """
+    sense_period = 0.001
+    terminator = ";;"
     while self.running.value:
       try:
-        self.socket.listen(self.workers)
         (conn, address) = self.socket.accept()
         with conn:
-          previous_data = ""
+          previous = ""
           received_coded = conn.recv(self.max_buffer_size)
+          received = []
+          terminator_count = 0
           while received_coded:
-            received = received_coded.decode()
-            # If valid PIMAP sample/metric is received add it to the queue.
-            if pu.validate_datum(received):
-              received = previous_data + received
-              pimap_data_split = received.split(";;")
-              pimap_data = [inc_pimap + ";;" for inc_pimap in pimap_data_split[:-1]]
-              previous_data = pimap_data_split[-1]
-              for pimap_datum in pimap_data:
-                # Add lookup addresses of incoming PIMAP data.
-                patient_id = pu.get_patient_id(pimap_datum)
-                device_id = pu.get_device_id(pimap_datum)
-                self.pimap_data_queue.put(pimap_datum)
-            else:
-              patient_id = address[0]
-              device_id = address[1]
-              sample = received
-              pimap_datum = pu.create_pimap_sample(self.sample_type, patient_id,
-                                                   device_id, sample)
-              self.pimap_data_queue.put(pimap_datum)
-              # TODO: Under development! May be used in the future for PIMAP commands.
-            self.addresses_by_id[(patient_id, device_id)] = address
-            received_coded = conn.recv(self.max_buffer_size)
+            stop_time = time.time() + sense_period
+            while time.time() < stop_time:
+              if not received_coded: break
+              if ";;" in received_coded.decode():
+                terminator_count += 1
+              received_unprocessed = (previous + received_coded.decode()).split(";;")
+              if len(received_unprocessed) == 1:
+                previous = ""
+                if received_unprocessed[0] != "":
+                  received.append(received_unprocessed[0])
+              else:
+                previous = received_unprocessed[-1]
+                received.extend(received_unprocessed[:-1])
+              received_coded = conn.recv(self.max_buffer_size)
+            if terminator_count >= 2:
+              terminator_count = 0
+              self.received_address_queue.put((received, address))
+              received = []
       except socket.timeout: continue
-
 
   def sense(self):
     """Core interaction of PIMAP Sense TCP.
@@ -165,7 +199,12 @@ class PimapSenseTcp:
     Terminates server processes and closes the socket.
     """
     self.running.value = False
-    for worker_process in self.worker_processes:
+    # Empty queues or processes won't join.
+    while not self.pimap_data_queue.empty(): self.pimap_data_queue.get()
+    while not self.received_address_queue.empty(): self.received_address_queue.get()
+    for worker_process in self.sense_worker_processes:
+      worker_process.join()
+    for worker_process in self.pimap_worker_processes:
       worker_process.join()
     self.socket.close()
 

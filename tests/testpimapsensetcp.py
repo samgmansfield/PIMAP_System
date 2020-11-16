@@ -19,10 +19,10 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     # Test using default values.
     sense = pset.PimapSenseTcp()
     self.assertEqual(sense.socket.family, socket.AF_INET)
-    for worker in sense.worker_processes:
+    for worker in sense.sense_worker_processes:
       self.assertTrue(worker.is_alive())
     sense.close()
-    for worker in sense.worker_processes:
+    for worker in sense.sense_worker_processes:
       self.assertFalse(worker.is_alive())
 
     # Test using an IPv4 loopback address.
@@ -30,10 +30,10 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     port = 1234
     sense = pset.PimapSenseTcp(host, port)
     self.assertEqual(sense.socket.family, socket.AF_INET)
-    for worker in sense.worker_processes:
+    for worker in sense.sense_worker_processes:
       self.assertTrue(worker.is_alive())
     sense.close()
-    for worker in sense.worker_processes:
+    for worker in sense.sense_worker_processes:
       self.assertFalse(worker.is_alive())
 
     # Test using an IPv4 non-loopback address.
@@ -41,10 +41,10 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     port = 1234
     sense = pset.PimapSenseTcp(host, port)
     self.assertEqual(sense.socket.family, socket.AF_INET)
-    for worker in sense.worker_processes:
+    for worker in sense.sense_worker_processes:
       self.assertTrue(worker.is_alive())
     sense.close()
-    for worker in sense.worker_processes:
+    for worker in sense.sense_worker_processes:
       self.assertFalse(worker.is_alive())
 
     # Test using an IPv6 loopback address.
@@ -53,10 +53,10 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     ipv6 = True
     sense = pset.PimapSenseTcp(host, port, ipv6=ipv6)
     self.assertEqual(sense.socket.family, socket.AF_INET6)
-    for worker in sense.worker_processes:
+    for worker in sense.sense_worker_processes:
       self.assertTrue(worker.is_alive())
     sense.close()
-    for worker in sense.worker_processes:
+    for worker in sense.sense_worker_processes:
       self.assertFalse(worker.is_alive())
 
     # Test using an IPv6 non-loopback address.
@@ -65,10 +65,10 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     ipv6 = True
     sense = pset.PimapSenseTcp(host, port, ipv6=ipv6)
     self.assertEqual(sense.socket.family, socket.AF_INET6)
-    for worker in sense.worker_processes:
+    for worker in sense.sense_worker_processes:
       self.assertTrue(worker.is_alive())
     sense.close()
-    for worker in sense.worker_processes:
+    for worker in sense.sense_worker_processes:
       self.assertFalse(worker.is_alive())
 
     # Test with system_samples
@@ -118,7 +118,6 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     while time.time() < stop_time:
       pimap_sample = pu.create_pimap_sample(sample_type, patient_id, device_id, sample)
       s.send(pimap_sample.encode())
-      time.sleep(0.001)
       sent_pimap_samples.append(pimap_sample)
       sample += 1
     s.close()
@@ -127,6 +126,7 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     while len(sensed_pimap_samples) < len(sent_pimap_samples):
       sensed_pimap_samples.extend(sense.sense())
     sense.close()
+    sensed_pimap_samples.sort(key=lambda x: int(pu.get_data(x)))
 
     self.assertEqual(len(sent_pimap_samples), len(sensed_pimap_samples))
     for sent_psample, sensed_psample in zip(sent_pimap_samples, sensed_pimap_samples):
@@ -146,8 +146,8 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     sent_data = []
     stop_time = time.time() + sense.system_samples_period
     while time.time() < stop_time:
-      s.send(str(data).encode())
-      time.sleep(0.001)
+      send_datum = str(data) + ";;"
+      s.send(send_datum.encode())
       sent_data.append(data)
       data += 1
     sock_name = s.getsockname()
@@ -157,6 +157,8 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     while len(sensed_pimap_samples) < len(sent_data):
       sensed_pimap_samples.extend(sense.sense())
     sense.close()
+    sensed_pimap_samples = sorted(sensed_pimap_samples,
+                                  key=lambda x: int(pu.get_data(x)))
 
     self.assertEqual(len(sent_data), len(sensed_pimap_samples))
     for sent_data, sensed_psample in zip(sent_data, sensed_pimap_samples):
@@ -182,7 +184,6 @@ class PimapSenseTcpTestCase(unittest.TestCase):
     while time.time() < stop_time:
       pimap_sample = pu.create_pimap_sample(sample_type, patient_id, device_id, sample)
       s.send(pimap_sample.encode())
-      time.sleep(0.001)
       sent_pimap_samples.append(pimap_sample)
       sample += 1
     s.close() 
@@ -196,6 +197,8 @@ class PimapSenseTcpTestCase(unittest.TestCase):
                                         sensed_samples))
     sensed_pimap_samples = list(filter(lambda x: pu.get_type(x) == "test_type",
                                        sensed_samples))
+    sensed_pimap_samples.sort(key=lambda x: int(pu.get_data(x)))
+
     self.assertEqual(len(sent_pimap_samples), len(sensed_pimap_samples))
     for sent_psample, sensed_psample in zip(sent_pimap_samples, sensed_pimap_samples):
       self.assertEqual(sent_psample, sensed_psample)
