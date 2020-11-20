@@ -14,11 +14,12 @@ import re
 import sys
 import time
 from collections import defaultdict
+from matplotlib import dates as mdates
 from matplotlib import pyplot as plt
 from pimap import pimaputilities as pu
 
 class PimapVisualizePltGraph:
-  def __init__(self, keys, system_samples=False):
+  def __init__(self, keys, system_samples=False, app=""):
     """Constructor for PIMAP Visualize Plt Graph
 
     Arguments:
@@ -27,6 +28,9 @@ class PimapVisualizePltGraph:
         given keys argument ["pressure"], only the pressure values will be graphed.
       system_samples (optional): A boolean value that indicates whether system_samples
         are produced that report the throughput of this component. Defaults to False.
+      app (optional): A name of the application running, which is used to append
+        to the name of they sample_type of system_samples,
+        e.g. sample_type:"system_samples_app". Defaults to "".
 
     Exceptions:
       TypeError:
@@ -37,6 +41,7 @@ class PimapVisualizePltGraph:
 
     self.keys = keys
     self.system_samples = bool(system_samples)
+    self.app = str(app)
 
     # System Samples Setup
     self.system_samples_updated = time.time()
@@ -200,6 +205,8 @@ class PimapVisualizePltGraph:
     if (self.system_samples and
         (time.time() - self.system_samples_updated > self.system_samples_period)):
       sample_type = "system_samples"
+      if self.app != "":
+        sample_type += "_" + self.app
       patient_id = "visualize"
       device_id = self.keys
       visualized_data_per_s = self.visualized_data/(time.time() -
@@ -210,8 +217,7 @@ class PimapVisualizePltGraph:
                 "display_limit":self.display_limit,
                 "total_data":self.total_data}
       if len(self.latencies) > 0:
-        latency = np.mean(self.latencies)
-        sample["latency"] = latency
+        sample["latency"] = np.mean(self.latencies)
       pimap_system_samples.append(pu.create_pimap_sample(sample_type, patient_id,
                                                          device_id, sample))
       self.system_samples_updated = time.time()
@@ -247,21 +253,36 @@ if __name__ == "__main__":
     print_usage_and_exit()
 
   # Change the font size.
-  plt.rcParams.update({'font.size': 20})
+  #plt.rcParams.update({'font.size': 20})
   figure, axes = plt.subplots()
   axes.grid()
   (title, xlabel, ylabel, plot_dates, plot_data) = pickle.load(open(sys.argv[1], "rb"))
+  # Markers for multiple plots on the same graph
+  markers = ["o", "v", "s", "+", "*", "1", "8", "p", "x"]
+  i = 0
   for line_id in sorted(plot_dates):
+    # Plot raw data
     plt.plot(plot_dates[line_id], plot_data[line_id], label=line_id)
+    # Plot filtered data by line_id
+    #if line_id.find("store") != -1:
+    #  plt.plot(plot_dates[line_id], plot_data[line_id], label=line_id,
+    #           linestyle = ":", linewidth=0.5,
+    #           marker=markers[i], markersize=8, markevery=1, fillstyle="none")
+    i += 1
   axes.set_title(title)
   axes.set_xlabel(xlabel)
+  # Change x-axis label.
+  #axes.set_xlabel("Time (hour:minute)")
   # Change the x-axis limit.
   #axes.set_xlim(datetime.datetime(2020, 7, 7, hour=17, minute=13),
   #              datetime.datetime(2020, 7, 8, hour=17, minute=14))
+  # Change the x-axis date formatter
+  #datefmt = mdates.DateFormatter("%H:%M")
+  #axes.xaxis.set_major_formatter(datefmt)
   # Change the y-axis label
-  #axes.set_ylabel("Throughput Per Second")
+  #axes.set_ylabel("Throughput (PIMAP samples/metrics a second)")
   # Change the y-axis limit.
-  #axes.set_ylim(0.0, 425.0)
+  #axes.set_ylim(-500, 12000)
   # Invert y-axis
   #axes.invert_yaxis()
   for label in axes.get_xticklabels():

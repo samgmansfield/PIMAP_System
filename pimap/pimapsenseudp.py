@@ -9,13 +9,14 @@ Author: Sam Mansfield
 import ast
 import ctypes
 import multiprocessing
+import numpy as np
 import socket
 import time
 from pimap import pimaputilities as pu
 
 class PimapSenseUdp:
   def __init__(self, host="localhost", port=31415, sample_type="udp", ipv6=False,
-               workers=3, system_samples=False):
+               workers=3, system_samples=False, app=""):
     """Constructor for PIMAP Sense UDP
 
     Arguments:
@@ -27,6 +28,9 @@ class PimapSenseUdp:
       workers (optional): The number of server processes. Defaults to 3.
       system_samples (optional): A boolean value that indicates whether system_samples
         are produced that report the throughput of this component. Defaults to False.
+      app (optional): A name of the application running, which is used to append
+        to the name of they sample_type of system_samples,
+        e.g. sample_type:"system_samples_app". Defaults to "".
 
     Exceptions:
       socket.error:
@@ -42,11 +46,13 @@ class PimapSenseUdp:
     self.ipv6 = bool(ipv6)
     self.workers = int(workers)
     self.system_samples = bool(system_samples)
+    self.app = str(app)
 
     # System Samples Setup
     self.sensed_data = 0
     self.system_samples_updated = time.time()
     self.system_samples_period = 1.0
+    self.latencies = []
 
     # Socket Setup
     if not self.ipv6:
@@ -121,10 +127,12 @@ class PimapSenseUdp:
 
     # Sort the PIMAP data by timestamp. The PIMAP data can be out of order because we are
     # using multiple processes to sense it.
-    pimap_data.sort(key=lambda x: pu.get_timestamp(x))
+    pimap_data.sort(key=lambda x: float(pu.get_timestamp(x)))
 
     # Track the amount of sensed PIMAP data.
     self.sensed_data += len(pimap_data)
+    timestamps = list(map(lambda x: float(pu.get_timestamp(x)), pimap_data))
+    self.latencies.extend(time.time() - np.array(timestamps))
 
     # If system_samples is True and a system_sample was not created within the last
     # system_samples period, create a system_sample.
@@ -132,16 +140,21 @@ class PimapSenseUdp:
     if (self.system_samples and
         (time.time() - self.system_samples_updated > self.system_samples_period)):
       sample_type = "system_samples"
+      if self.app != "":
+        sample_type += "_" + self.app
       # Identify PIMAP Sense using the host and port.
       patient_id = "sense"
       device_id = (self.host, self.port)
-      sensed_data_per_s = self.sensed_data/(time.time() - self.system_samples_updated)
-      sample = {"throughput":sensed_data_per_s}
+      throughput = self.sensed_data/(time.time() - self.system_samples_updated)
+      sample = {"throughput":throughput}
+      if len(self.latencies) > 0:
+        sample["latency"] = np.mean(self.latencies)
       system_sample = pu.create_pimap_sample(sample_type, patient_id, device_id, sample)
       pimap_system_samples.append(system_sample)
 
       # Reset system_samples variables.
       self.system_samples_updated = time.time()
+      self.latencies = []
       self.sensed_data = 0
 
     return pimap_data + pimap_system_samples

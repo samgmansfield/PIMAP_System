@@ -9,13 +9,14 @@ Author: Sam Mansfield
 import ast
 import ctypes
 import multiprocessing
+import numpy as np
 import socket
 import time
 from pimap import pimaputilities as pu
 
 class PimapSenseTcp:
   def __init__(self, host="localhost", port=31416, sample_type="tcp", ipv6=False,
-               sense_workers=3, pimap_workers=1, system_samples=False):
+               sense_workers=3, pimap_workers=1, system_samples=False, app=""):
     """Constructor for PIMAP Sense TCP
 
     Arguments:
@@ -30,6 +31,9 @@ class PimapSenseTcp:
         sensed data. Defaults to 3.
       system_samples (optional): A boolean value that indicates whether system_samples
         are produced that report the throughput of this component. Defaults to False.
+      app (optional): A name of the application running, which is used to append
+        to the name of they sample_type of system_samples,
+        e.g. sample_type:"system_samples_app". Defaults to "".
 
     Exceptions:
       socket.error:
@@ -46,11 +50,13 @@ class PimapSenseTcp:
     self.sense_workers = int(sense_workers)
     self.pimap_workers = int(pimap_workers)
     self.system_samples = bool(system_samples)
+    self.app = str(app)
 
     # System Samples Setup
     self.sensed_data = 0
     self.system_samples_updated = time.time()
     self.system_samples_period = 1.0
+    self.latencies = []
 
     # Socket Setup
     if not self.ipv6:
@@ -98,26 +104,27 @@ class PimapSenseTcp:
   def _create_pimap_data_and_add_to_queue(self):
     while self.running.value:
       if not self.received_address_queue.empty():
-        (unprocessed, address) = self.received_address_queue.get()
-        processed = ";;".join(unprocessed) 
+        (processed, address) = self.received_address_queue.get()
         # If valid PIMAP sample/metric is received add it to the queue.
-        if pu.validate_datum(processed):
-          pimap_data = list(map(lambda x: x + ";;", unprocessed))
+        # Assume that if there is one valid PIMAP datum than all the data is PIMAP data.
+        if pu.validate_datum(processed[0] + ";;"):
+          pimap_data = list(map(lambda x: x + ";;", processed))
           for pimap_datum in pimap_data:
-            # Add lookup addresses of incoming PIMAP data.
             patient_id = pu.get_patient_id(pimap_datum)
             device_id = pu.get_device_id(pimap_datum)
             self.pimap_data_queue.put(pimap_datum)
+            # TODO: Under development! May be used in the future for PIMAP commands.
+            self.addresses_by_id[(patient_id, device_id)] = address
         else:
-          for datum in unprocessed:
+          for datum in processed:
             patient_id = address[0]
             device_id = address[1]
             sample = datum
             pimap_datum = pu.create_pimap_sample(self.sample_type, patient_id,
                                                  device_id, sample)
             self.pimap_data_queue.put(pimap_datum)
-        # TODO: Under development! May be used in the future for PIMAP commands.
-        self.addresses_by_id[(patient_id, device_id)] = address
+            # TODO: Under development! May be used in the future for PIMAP commands.
+            self.addresses_by_id[(patient_id, device_id)] = address
 
   def _sense_worker(self):
     """Worker process
@@ -130,29 +137,19 @@ class PimapSenseTcp:
       try:
         (conn, address) = self.socket.accept()
         with conn:
-          previous = ""
           received_coded = conn.recv(self.max_buffer_size)
-          received = []
-          terminator_count = 0
+          received = ""
           while received_coded:
             stop_time = time.time() + sense_period
             while time.time() < stop_time:
               if not received_coded: break
-              if ";;" in received_coded.decode():
-                terminator_count += 1
-              received_unprocessed = (previous + received_coded.decode()).split(";;")
-              if len(received_unprocessed) == 1:
-                previous = ""
-                if received_unprocessed[0] != "":
-                  received.append(received_unprocessed[0])
-              else:
-                previous = received_unprocessed[-1]
-                received.extend(received_unprocessed[:-1])
+              received += received_coded.decode()
               received_coded = conn.recv(self.max_buffer_size)
-            if terminator_count >= 2:
-              terminator_count = 0
-              self.received_address_queue.put((received, address))
-              received = []
+            if terminator in received:
+              received_split = received.split(terminator)
+              processed = received_split[:-1]
+              received = received_split[-1]
+              self.received_address_queue.put((processed, address))
       except socket.timeout: continue
 
   def sense(self):
@@ -168,8 +165,10 @@ class PimapSenseTcp:
 
     # Sort the PIMAP data by timestamp. The PIMAP data can be out of order because we are
     # using multiple processes to sense it.
-    pimap_data.sort(key=lambda x: pu.get_timestamp(x))
+    pimap_data.sort(key=lambda x: float(pu.get_timestamp(x)))
 
+    timestamps = (list(map(lambda x: float(pu.get_timestamp(x)), pimap_data)))
+    self.latencies.extend(time.time() - np.array(timestamps))
     # Track the amount of sensed PIMAP data.
     self.sensed_data += len(pimap_data)
 
@@ -179,17 +178,22 @@ class PimapSenseTcp:
     if (self.system_samples and
         (time.time() - self.system_samples_updated > self.system_samples_period)):
       sample_type = "system_samples"
+      if self.app != "":
+        sample_type += "_" + self.app
       # Identify PIMAP Sense using the host and port.
       patient_id = "sense"
       device_id = (self.host, self.port)
       sensed_data_per_s = self.sensed_data/(time.time() - self.system_samples_updated)
       sample = {"throughput":sensed_data_per_s}
+      if len(self.latencies) > 0:
+        sample["latency"] = np.mean(self.latencies)
       system_sample = pu.create_pimap_sample(sample_type, patient_id, device_id, sample)
       pimap_system_samples.append(system_sample)
 
       # Reset system_samples variables.
       self.system_samples_updated = time.time()
       self.sensed_data = 0
+      self.latencies = []
 
     return pimap_data + pimap_system_samples
 

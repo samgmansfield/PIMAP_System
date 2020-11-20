@@ -8,6 +8,7 @@ License:
 Author: Sam Mansfield
 """
 import ast
+import numpy as np
 import random
 import string
 import sys
@@ -19,7 +20,7 @@ from confluent_kafka import KafkaException
 from pimap import pimaputilities as pu
 
 class PimapStoreKafka:
-  def __init__(self, host="localhost", port=9092, system_samples=False):
+  def __init__(self, host="localhost", port=9092, system_samples=False, app=""):
     """Constructor for PIMAP Store Kafka
 
     Arguments:
@@ -27,6 +28,9 @@ class PimapStoreKafka:
       port (optional): The port where Kafka can be accessed. Defaults to 9092.
       system_samples (optional): A boolean value that indicates whether system_samples
         are produced that report the throughput of this component. Defaults to False.
+      app (optional): A name of the application running, which is used to append
+        to the name of they sample_type of system_samples,
+        e.g. sample_type:"system_samples_app". Defaults to "".
 
     Exceptions:
       KafkaException:
@@ -34,9 +38,13 @@ class PimapStoreKafka:
     """
     self.broker = str(host) + ":" + str(port)
     self.system_samples = bool(system_samples)
+    self.app = str(app)
+
     self.system_samples_period = 1.0
     self.stored_system_samples_updated = time.time()
     self.retrieved_system_samples_updated = time.time()
+    self.stored_latencies = []
+    self.retrieved_latencies = []
 
     # No exception is raised when creating the admin so we call list_topics to see
     # if the broker is valid.
@@ -83,20 +91,28 @@ class PimapStoreKafka:
         self.producer.flush()
         self.producer.produce(topic, value, key)
 
+    timestamps = list(map(lambda x: float(pu.get_timestamp(x)), pimap_data))
+    self.stored_latencies.extend(time.time() - np.array(timestamps))
+
     pimap_system_samples = []
     if self.system_samples:
       self.stored_data += len(pimap_data)
       if time.time() - self.stored_system_samples_updated > self.system_samples_period:
         sample_type = "system_samples"
+        if self.app != "":
+          sample_type += "_" + self.app
         patient_id = "store_store"
         device_id = self.stored_topics
         sample = {"throughput":(self.stored_data/
                                 (time.time() - self.stored_system_samples_updated)),
                   "queue_length":len(self.producer)}
+        if len(self.stored_latencies) > 0:
+          sample["latency"] =  np.mean(self.stored_latencies)
         pimap_system_samples.append(pu.create_pimap_sample(sample_type, patient_id,
                                                            device_id, sample))
         self.stored_system_samples_updated = time.time()
         self.stored_data = 0
+        self.stored_latencies = []
 
     return pimap_system_samples
 
@@ -148,12 +164,17 @@ class PimapStoreKafka:
     if patient_id != None:
       pimap_data = list(filter(lambda x: pu.get_patient_id(x) == patient_id, pimap_data))
 
+    timestamps = list(map(lambda x: float(pu.get_timestamp(x)), pimap_data))
+    self.retrieved_latencies.extend(time.time() - np.array(timestamps))
+
     pimap_system_samples = []
     if self.system_samples:
       self.retrieved_data += len(pimap_data)
       if (time.time() - self.retrieved_system_samples_updated >
           self.system_samples_period):
         sample_type = "system_samples"
+        if self.app != "":
+          sample_type += "_" + self.app
         patient_id = "store_retrieve" 
         device_id = self.consumer_dict.keys()
         sample = {"throughput":(self.retrieved_data/
@@ -161,10 +182,13 @@ class PimapStoreKafka:
                   "num_messages":self.num_messages,
                   "messages":len(kafka_messages),
                   "timeout":self.timeout}
+        if len(self.retrieved_latencies):
+          sample["latency"] = np.mean(self.retrieved_latencies)
         pimap_system_samples.append(pu.create_pimap_sample(sample_type, patient_id,
                                                            device_id, sample))
         self.retrieved_system_samples_updated = time.time()
         self.retrieved_data = 0
+        self.retrieved_latencies = []
 
     return pimap_data + pimap_system_samples
 

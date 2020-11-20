@@ -35,7 +35,7 @@ from pimap import pimaputilities as pu
 
 class PimapAnalyzeObjectiveMobility:
   def __init__(self, max_pressure=100.0, sample_type="pressure_bandage",
-               system_samples=False):
+               system_samples=False, app=""):
     """Constructor for PIMAP Analyze Objective Mobility
 
     Arguments:
@@ -46,6 +46,9 @@ class PimapAnalyzeObjectiveMobility:
       system_samples (optional): A boolean value that indicates whether system_samples
         are produced that report the throughput and other relevant values of this
         component. Defaults to False.
+      app (optional): A name of the application running, which is used to append
+        to the name of they sample_type of system_samples,
+        e.g. sample_type:"system_samples_app". Defaults to "".
 
     Exceptions:
       ValueError:
@@ -58,9 +61,11 @@ class PimapAnalyzeObjectiveMobility:
     self.system_samples_update_period = 1.0
     self.samples_in = 0
     self.metrics_out = 0
+    self.latencies = []
     self.metric_type = "objective_mobility"
     if self.sample_type != "pressure_bandage":
       self.metric_type += "_" + self.sample_type
+    self.app = str(app)
 
     self.aggregation_buffer = []
     self.aggregation_limit = 100
@@ -265,12 +270,16 @@ class PimapAnalyzeObjectiveMobility:
       pimap_metrics.extend(movements_per_min_pimap_metrics)
       self.aggregation_buffer = []
 
+    timestamps = list(map(lambda x: float(pu.get_timestamp(x)), filtered_pimap_samples))
+    self.latencies.extend(time.time() - np.array(timestamps))
     pimap_system_samples = []
     if self.system_samples:
       self.samples_in += len(filtered_pimap_samples)
       self.metrics_out += len(pimap_metrics)
       if time.time() - self.system_samples_updated > self.system_samples_update_period:
         sample_type = "system_samples"
+        if self.app != "":
+          sample_type += "_" + self.app
         patient_id = "analyze"
         device_id = self.metric_type
         sample = {"throughput_in":(self.samples_in/
@@ -279,11 +288,13 @@ class PimapAnalyzeObjectiveMobility:
                                      (time.time() - self.system_samples_updated)),
                   "aggregation_limit":self.aggregation_limit,
                   "aggregation":len(self.aggregation_buffer)}
-
+        if len(self.latencies) > 0:
+          sample["latency"] = np.mean(self.latencies)
         pimap_system_samples.append(pu.create_pimap_sample(sample_type, patient_id,
                                                            device_id, sample))
         self.system_samples_updated = time.time()
         self.samples_in = 0
         self.metrics_out = 0
+        self.latencies = []
 
     return pimap_metrics + pimap_system_samples
