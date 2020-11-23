@@ -90,8 +90,12 @@ class PimapStoreKafka:
       except BufferError as e:
         self.producer.flush()
         self.producer.produce(topic, value, key)
-
-    timestamps = list(map(lambda x: float(pu.get_timestamp(x)), pimap_data))
+    
+    # Filter out system_samples otherwise latency data also accounts for latency
+    # of system samples.
+    filtered_pimap_data = list(filter(
+      lambda x: pu.get_type(x).find("system_samples") == -1, pimap_data))
+    timestamps = list(map(lambda x: float(pu.get_timestamp(x)), filtered_pimap_data))
     self.stored_latencies.extend(time.time() - np.array(timestamps))
 
     pimap_system_samples = []
