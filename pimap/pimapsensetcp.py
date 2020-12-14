@@ -131,7 +131,6 @@ class PimapSenseTcp:
 
     Used internally to create TCP server processes.
     """
-    sense_period = 0.001
     terminator = ";;"
     while self.running.value:
       try:
@@ -140,16 +139,13 @@ class PimapSenseTcp:
           received_coded = conn.recv(self.max_buffer_size)
           received = ""
           while received_coded:
-            stop_time = time.time() + sense_period
-            while time.time() < stop_time:
-              if not received_coded: break
-              received += received_coded.decode()
-              received_coded = conn.recv(self.max_buffer_size)
+            received += received_coded.decode()
             if terminator in received:
               received_split = received.split(terminator)
               processed = received_split[:-1]
               received = received_split[-1]
               self.received_address_queue.put((processed, address))
+            received_coded = conn.recv(self.max_buffer_size)
       except socket.timeout: continue
 
   def sense(self):
