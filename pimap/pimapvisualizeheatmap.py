@@ -8,8 +8,8 @@ Authors: Eric Vin, Sam Mansfield
 """
 import pickle
 import numpy as np
+import time
 from matplotlib import pyplot as plt
-
 from pimap import pimaputilities as pu
 
 class PimapVisualizeHeatmap:
@@ -21,7 +21,11 @@ class PimapVisualizeHeatmap:
     self.heat_map = [[self.min_value, self.max_value]]
     self.im = self.axes.imshow(self.heat_map, origin="lower")
     self.colorbar = self.figure.colorbar(self.im)
-    plt.pause(0.01)
+    self.text = self.figure.text(0, 0, "")
+    
+    self.figure.canvas.draw_idle()
+    plt.show(block=False)
+    self.figure.canvas.start_event_loop(0.001)
 
   def visualize(self, pimap_metrics):
     if len(pimap_metrics) == 0:
@@ -29,7 +33,8 @@ class PimapVisualizeHeatmap:
       return
 
     pimap_metric = pimap_metrics[-1]
-
+    timestamp = float(pu.get_timestamp(pimap_metric))
+    self.text.set_text(time.asctime(time.localtime(timestamp)))
     data = pickle.loads(pu.get_data(pimap_metric).encode())
 
     if np.shape(data) != np.shape(self.heat_map):
@@ -37,7 +42,14 @@ class PimapVisualizeHeatmap:
     else:
       self.im.set_data(data)
     self.heat_map = data
-    plt.pause(0.001)
+
+    if self.figure.stale:
+      self.figure.canvas.draw_idle()
+      # Pushes graph to foreground. This may be desirable in some situations.
+      #plt.show(block=False)
+      self.figure.canvas.start_event_loop(0.001)
+    else:
+      time.sleep(0.001)
 
   def close(self):
     plt.close(self.figure)
